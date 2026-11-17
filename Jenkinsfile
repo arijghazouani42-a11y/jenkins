@@ -1,39 +1,50 @@
 pipeline {
-agent any
-options {timestamps()}
-stages {
-stage('Cloner le dépôt'){
-steps {
-git url: 'https://github.com/arijghazouani42-a11y/jenkins.git', branch: 'master'
-}
-}
-stage('Étape 1 : Vérification du dépôt'){
-steps {
-bat 'echo === Étape 1 : Vérification du dépôt ==='
-bat 'git status'
-}
-}
-stage('Étape 2 : Afficher le contenu du projet') {
-steps {
-bat 'echo === Étape 2 : Afficher le contenu du projet ==='
-bat 'dir'
-}
-}
-stage('Étape 3 : Simuler un déploiement local') {
-steps {
-bat 'echo === Étape 3 : Simuler un déploiement local ==='
-bat 'echo Le fichier index.html est prêt à être affiché'
-}
-}
-stage('Étape 4 : Fin du build'){
-steps {
-bat 'echo === Étape 4 : Fin du build ==='
-bat 'echo SUCCESS'
-}
-}
-}
-post {
-success { echo ' Build OK'}
-failure { echo ' Build KO' }
-}
+    agent any
+    options { timestamps() }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                echo '=== Checkout : récupération du code ==='
+                git url: 'https://github.com/arijghazouani42-a11y/jenkins.git', branch: 'master'
+                bat 'git status'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo '=== Build : préparation du projet ==='
+                bat 'dir'
+                bat 'if not exist build mkdir build'
+                bat 'copy /Y index.html build'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo '=== Test : vérification du projet ==='
+                bat 'if exist index.html (echo index.html trouvé) else (echo index.html introuvable & exit 1)'
+                bat 'findstr /i "<html" index.html'
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo '=== Deploy : déploiement local ==='
+                bat 'if not exist deploy mkdir deploy'
+                bat 'copy /Y build\\index.html deploy'
+                bat 'echo Le fichier index.html est déployé dans le dossier deploy'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'SUCCESS : pipeline terminé avec succès'
+        }
+        failure {
+            echo 'FAILURE : le pipeline a échoué, vérifie la Console Output'
+        }
+    }
 }
