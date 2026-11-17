@@ -1,50 +1,54 @@
 pipeline {
-    agent any
-    options { timestamps() }
+  agent any
+  options { timestamps() }
 
-    stages {
+  environment {
+    IMAGE = 'arijghazouani/monapp'
+    TAG = "build-${env.BUILD_NUMBER}"
+  }
 
-        stage('Checkout') {
-            steps {
-                echo '=== Checkout : récupération du code ==='
-                git url: 'https://github.com/arijghazouani42-a11y/jenkins.git', branch: 'master'
-                bat 'git status'
-            }
-        }
-
-        stage('Build') {
-            steps {
-                echo '=== Build : préparation du projet ==='
-                bat 'dir'
-                bat 'if not exist build mkdir build'
-                bat 'copy /Y index.html build'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                echo '=== Test : vérification du projet ==='
-                bat 'if exist index.html (echo index.html trouvé) else (echo index.html introuvable & exit 1)'
-                bat 'findstr /i "<html" index.html'
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                echo '=== Deploy : déploiement local ==='
-                bat 'if not exist deploy mkdir deploy'
-                bat 'copy /Y build\\index.html deploy'
-                bat 'echo Le fichier index.html est déployé dans le dossier deploy'
-            }
-        }
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
     }
 
-    post {
-        success {
-            echo 'SUCCESS : pipeline terminé avec succès'
-        }
-        failure {
-            echo 'FAILURE : le pipeline a échoué, vérifie la Console Output'
-        }
+    stage('Docker Build') {
+      steps {
+        bat 'docker version'
+        bat "docker build -t %IMAGE%:%TAG% ."
+      }
     }
+
+    stage('Smoke Test') {
+      steps {
+        bat """
+          docker rm -f monapp_test 2>nul || ver > nul
+          docker run -d --name monapp_test -p 8083:80 %IMAGE%:%TAG%
+          ping -n 6 127.0.0.1 > nul
+          curl -I http://localhost:8083 | find "200 OK"
+          docker rm -f monapp_test
+        """
+      }
+    }
+
+    stage('Push (Docker Hub)') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+                                          usernameVariable: 'USER',
+                                          passwordVariable: 'PASS')]) {
+          bat """
+            echo %PASS%| docker login -u %USER% --password-stdin
+            docker tag %IMAGE%:%TAG% %IMAGE%:latest
+            docker push %IMAGE%:%TAG%
+            docker push %IMAGE%:latest
+          """
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo 'Build+Test+Push OK' }
+    failure { echo 'Build/Tests/Push KO' }
+  }
 }
